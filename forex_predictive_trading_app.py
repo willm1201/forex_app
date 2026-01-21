@@ -52,7 +52,7 @@ TF = st.selectbox("Timeframe", ["5m", "15m", "1h"])
 
 def fetch_fx(pair, timeframe):
     """
-    Alpha Vantage FX Intraday (robust handling)
+    Alpha Vantage FX with intraday -> daily fallback
     """
     symbol_from, symbol_to = pair.split("/")
 
@@ -63,7 +63,7 @@ def fetch_fx(pair, timeframe):
     }
     interval = tf_map[timeframe]
 
-    url = (
+    intraday_url = (
         "https://www.alphavantage.co/query"
         f"?function=FX_INTRADAY"
         f"&from_symbol={symbol_from}"
@@ -73,7 +73,7 @@ def fetch_fx(pair, timeframe):
         f"&apikey={FX_API_KEY}"
     )
 
-    r = requests.get(url, timeout=20)
+    r = requests.get(intraday_url, timeout=20)
     if r.status_code != 200:
         st.error("Alpha Vantage HTTP error")
         return None
@@ -90,12 +90,47 @@ def fetch_fx(pair, timeframe):
         return None
 
     key = f"Time Series FX ({interval})"
-    if key not in data:
-        st.error("Alpha Vantage returned no FX data.")
+
+    # -------- INTRADAY SUCCESS --------
+    if key in data:
+        df = pd.DataFrame.from_dict(data[key], orient="index")
+        df.reset_index(inplace=True)
+
+        df.rename(columns={
+            "index": "datetime",
+            "1. open": "open",
+            "2. high": "high",
+            "3. low": "low",
+            "4. close": "close"
+        }, inplace=True)
+
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df[["open","high","low","close"]] = df[["open","high","low","close"]].astype(float)
+
+        return df.sort_values("datetime")
+
+    # -------- FALLBACK TO DAILY --------
+    st.warning("Intraday FX unavailable. Falling back to daily data.")
+
+    daily_url = (
+        "https://www.alphavantage.co/query"
+        f"?function=FX_DAILY"
+        f"&from_symbol={symbol_from}"
+        f"&to_symbol={symbol_to}"
+        f"&outputsize=compact"
+        f"&apikey={FX_API_KEY}"
+    )
+
+    r = requests.get(daily_url, timeout=20)
+    data = r.json()
+
+    if "Time Series FX (Daily)" not in data:
+        st.error("Alpha Vantage daily FX also unavailable.")
         return None
 
-    # -------- NORMALIZE DATA --------
-    df = pd.DataFrame.from_dict(data[key], orient="index")
+    df = pd.DataFrame.from_dict(
+        data["Time Series FX (Daily)"], orient="index"
+    )
     df.reset_index(inplace=True)
 
     df.rename(columns={
