@@ -19,7 +19,7 @@ st.warning("Decision-support only. AI does NOT execute trades or guarantee profi
 # ---------------- API KEYS ----------------
 # Preferred: Streamlit Secrets (works on localhost & Streamlit Cloud)
 # Create .streamlit/secrets.toml with:
-# FX_API_KEY = "YOUR_PROVIDER_KEY"
+# FX_API_KEY = "O27B69SGSTW7BT40"
 FX_API_KEY = st.secrets.get("FX_API_KEY", "")
 
 # Optional fallback: environment variable
