@@ -19,7 +19,7 @@ st.warning("Decision-support only. AI does NOT execute trades or guarantee profi
 # ---------------- API KEYS ----------------
 # Preferred: Streamlit Secrets (works on localhost & Streamlit Cloud)
 # Create .streamlit/secrets.toml with:
-# FX_API_KEY = "O27B69SGSTW7BT40"
+# FX_API_KEY = "YOUR_PROVIDER_KEY"
 FX_API_KEY = st.secrets.get("FX_API_KEY", "")
 
 # Optional fallback: environment variable
@@ -52,12 +52,10 @@ TF = st.selectbox("Timeframe", ["5m", "15m", "1h"])
 
 def fetch_fx(pair, timeframe):
     """
-    Alpha Vantage FX Intraday
-    Docs: https://www.alphavantage.co/documentation/
+    Alpha Vantage FX Intraday (robust handling)
     """
     symbol_from, symbol_to = pair.split("/")
 
-    # Map Streamlit timeframe to Alpha Vantage interval
     tf_map = {
         "5m": "5min",
         "15m": "15min",
@@ -77,29 +75,41 @@ def fetch_fx(pair, timeframe):
 
     r = requests.get(url, timeout=20)
     if r.status_code != 200:
+        st.error("Alpha Vantage HTTP error")
         return None
 
     data = r.json()
-    key = f"Time Series FX ({interval})"
-    if key not in data:
+
+    # -------- HANDLE COMMON AV ERRORS --------
+    if "Note" in data:
+        st.error("Alpha Vantage rate limit reached. Wait 60 seconds.")
         return None
 
-    ts = data[key]
-    df = pd.DataFrame.from_dict(ts, orient='index')
+    if "Error Message" in data:
+        st.error("Alpha Vantage error: invalid API call or key.")
+        return None
+
+    key = f"Time Series FX ({interval})"
+    if key not in data:
+        st.error("Alpha Vantage returned no FX data.")
+        return None
+
+    # -------- NORMALIZE DATA --------
+    df = pd.DataFrame.from_dict(data[key], orient="index")
     df.reset_index(inplace=True)
 
     df.rename(columns={
-        'index': 'datetime',
-        '1. open': 'open',
-        '2. high': 'high',
-        '3. low': 'low',
-        '4. close': 'close'
+        "index": "datetime",
+        "1. open": "open",
+        "2. high": "high",
+        "3. low": "low",
+        "4. close": "close"
     }, inplace=True)
 
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    df[['open','high','low','close']] = df[['open','high','low','close']].astype(float)
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    df[["open","high","low","close"]] = df[["open","high","low","close"]].astype(float)
 
-    return df[['datetime', 'open', 'high', 'low', 'close']]
+    return df.sort_values("datetime")
 
 # ---------------- LOAD DATA ----------------
 if st.button("Run AI Analysis"):
