@@ -16,6 +16,20 @@ st.set_page_config(page_title="Forex AI Profit Engine", layout="wide")
 st.title("💱 Forex AI Profit Optimization Engine")
 st.warning("Decision-support only. AI does NOT execute trades or guarantee profit.")
 
+# ---------------- API KEYS ----------------
+# Preferred: Streamlit Secrets (works on localhost & Streamlit Cloud)
+# Create .streamlit/secrets.toml with:
+# FX_API_KEY = "YOUR_PROVIDER_KEY"
+FX_API_KEY = st.secrets.get("FX_API_KEY", "")
+
+# Optional fallback: environment variable
+import os
+if not FX_API_KEY:
+    FX_API_KEY = os.getenv("FX_API_KEY", "")
+
+if not FX_API_KEY:
+    st.info("FX_API_KEY not set. Add it to .streamlit/secrets.toml or as an environment variable.")
+
 # ---------------- RISK LIMITS (HARD CONSTRAINTS) ----------------
 MAX_RISK_PER_TRADE = 0.01     # 1%
 MAX_DAILY_LOSS = 0.03         # 3%
@@ -32,22 +46,62 @@ if 'equity' not in st.session_state:
 PAIR = st.selectbox("Currency Pair", ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"])
 TF = st.selectbox("Timeframe", ["5m", "15m", "1h"])
 
-API_KEY = st.secrets.get("FX_API_KEY", "")
-
 # ---------------- DATA INGESTION ----------------
+# NOTE: Replace example endpoint with your real FX data provider
+# Examples: Alpha Vantage, Twelve Data, Polygon, OANDA (read-only)
+
 def fetch_fx(pair, timeframe):
+    """
+    Polygon.io FX aggregates
+    Docs: https://polygon.io/docs/forex
+    """
     symbol = pair.replace("/", "")
-    url = f"https://example-fx-api.com/time_series?symbol={symbol}&interval={timeframe}&apikey={API_KEY}"
-    r = requests.get(url)
+
+    # Map Streamlit timeframe to Polygon multiplier/timespan
+    tf_map = {
+        "5m": (5, "minute"),
+        "15m": (15, "minute"),
+        "1h": (1, "hour"),
+    }
+    multiplier, timespan = tf_map[timeframe]
+
+    url = (
+        f"https://api.polygon.io/v2/aggs/ticker/C:{symbol}/range/"
+        f"{multiplier}/{timespan}/"
+        f"{(datetime.utcnow().date().replace(day=1))}/"
+        f"{datetime.utcnow().date()}"
+        f"?adjusted=true&sort=asc&limit=5000&apiKey={FX_API_KEY}"
+    )
+
+    r = requests.get(url, timeout=20)
     if r.status_code != 200:
         return None
-    return pd.DataFrame(r.json())
+
+    data = r.json()
+    if 'results' not in data:
+        return None
+
+    df = pd.DataFrame(data['results'])
+    df.rename(columns={
+        't': 'datetime',
+        'o': 'open',
+        'h': 'high',
+        'l': 'low',
+        'c': 'close'
+    }, inplace=True)
+
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    return df[['datetime', 'open', 'high', 'low', 'close']]
 
 # ---------------- LOAD DATA ----------------
 if st.button("Run AI Analysis"):
+    if not FX_API_KEY:
+        st.error("Missing FX_API_KEY. Set it before running analysis.")
+        st.stop()
+
     df = fetch_fx(PAIR, TF)
-    if df is None:
-        st.error("FX provider not connected.")
+    if df is None or df.empty:
+        st.error("FX provider not connected or returned no data.")
         st.stop()
 
     df = df.sort_values("datetime")
@@ -107,7 +161,7 @@ if st.button("Run AI Analysis"):
     # ---------------- TRADE RECOMMENDATION ----------------
     risk_amount = st.session_state.equity * MAX_RISK_PER_TRADE
     stop_pips = df['atr'].iloc[-1] * 10000 * 1.2
-    position = risk_amount / stop_pips
+    position = risk_amount / max(stop_pips, 1)
 
     st.subheader("AI Trade Recommendation")
     st.success(f"{'BUY' if direction == 1 else 'SELL'} {PAIR}")
