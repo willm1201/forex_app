@@ -14,18 +14,18 @@ from sklearn.pipeline import Pipeline
 # ---------------- APP CONFIG ----------------
 st.set_page_config(page_title="Forex AI Profit Engine", layout="wide")
 st.title("💱 Forex AI Profit Optimization Engine")
-st.warning("Decision-support only. AI does NOT execute trades or guarantee profit. TEST")
+st.warning("Decision-support only. AI does NOT execute trades or guarantee profit.")
 
 # ---------------- API KEYS ----------------
 # Preferred: Streamlit Secrets (works on localhost & Streamlit Cloud)
 # Create .streamlit/secrets.toml with:
-# FX_API_KEY = "O27B69SGSTW7BT40"
-FX_API_KEY = st.secrets.get("O27B69SGSTW7BT40", "")
+# FX_API_KEY = "YOUR_PROVIDER_KEY"
+FX_API_KEY = st.secrets.get("FX_API_KEY", "")
 
 # Optional fallback: environment variable
 import os
 if not FX_API_KEY:
-    FX_API_KEY = os.getenv("O27B69SGSTW7BT40", "")
+    FX_API_KEY = os.getenv("FX_API_KEY", "")
 
 if not FX_API_KEY:
     st.info("FX_API_KEY not set. Add it to .streamlit/secrets.toml or as an environment variable.")
@@ -52,25 +52,27 @@ TF = st.selectbox("Timeframe", ["5m", "15m", "1h"])
 
 def fetch_fx(pair, timeframe):
     """
-    Polygon.io FX aggregates
-    Docs: https://polygon.io/docs/forex
+    Alpha Vantage FX Intraday
+    Docs: https://www.alphavantage.co/documentation/
     """
-    symbol = pair.replace("/", "")
+    symbol_from, symbol_to = pair.split("/")
 
-    # Map Streamlit timeframe to Polygon multiplier/timespan
+    # Map Streamlit timeframe to Alpha Vantage interval
     tf_map = {
-        "5m": (5, "minute"),
-        "15m": (15, "minute"),
-        "1h": (1, "hour"),
+        "5m": "5min",
+        "15m": "15min",
+        "1h": "60min",
     }
-    multiplier, timespan = tf_map[timeframe]
+    interval = tf_map[timeframe]
 
     url = (
-        f"https://api.polygon.io/v2/aggs/ticker/C:{symbol}/range/"
-        f"{multiplier}/{timespan}/"
-        f"{(datetime.utcnow().date().replace(day=1))}/"
-        f"{datetime.utcnow().date()}"
-        f"?adjusted=true&sort=asc&limit=5000&apiKey={FX_API_KEY}"
+        "https://www.alphavantage.co/query"
+        f"?function=FX_INTRADAY"
+        f"&from_symbol={symbol_from}"
+        f"&to_symbol={symbol_to}"
+        f"&interval={interval}"
+        f"&outputsize=compact"
+        f"&apikey={FX_API_KEY}"
     )
 
     r = requests.get(url, timeout=20)
@@ -78,19 +80,25 @@ def fetch_fx(pair, timeframe):
         return None
 
     data = r.json()
-    if 'results' not in data:
+    key = f"Time Series FX ({interval})"
+    if key not in data:
         return None
 
-    df = pd.DataFrame(data['results'])
+    ts = data[key]
+    df = pd.DataFrame.from_dict(ts, orient='index')
+    df.reset_index(inplace=True)
+
     df.rename(columns={
-        't': 'datetime',
-        'o': 'open',
-        'h': 'high',
-        'l': 'low',
-        'c': 'close'
+        'index': 'datetime',
+        '1. open': 'open',
+        '2. high': 'high',
+        '3. low': 'low',
+        '4. close': 'close'
     }, inplace=True)
 
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    df[['open','high','low','close']] = df[['open','high','low','close']].astype(float)
+
     return df[['datetime', 'open', 'high', 'low', 'close']]
 
 # ---------------- LOAD DATA ----------------
