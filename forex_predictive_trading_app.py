@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 # ---------------- APP CONFIG ----------------
 st.set_page_config(page_title="Forex AI Profit Engine", layout="wide")
 st.title("💱 Forex AI Profit Optimization Engine")
-st.warning("Decision-support only. AI does NOT execute trades or guarantee profit.")
+st.warning("Decision-support only. AI does NOT execute trades or guarantee profit. TEST")
 
 # ---------------- API KEYS ----------------
 # Preferred: Streamlit Secrets (works on localhost & Streamlit Cloud)
