@@ -25,7 +25,7 @@ FX_API_KEY = st.secrets.get("O27B69SGSTW7BT40", "")
 # Optional fallback: environment variable
 import os
 if not FX_API_KEY:
-    FX_API_KEY = os.getenv("FX_API_KEY", "")
+    FX_API_KEY = os.getenv("O27B69SGSTW7BT40", "")
 
 if not FX_API_KEY:
     st.info("FX_API_KEY not set. Add it to .streamlit/secrets.toml or as an environment variable.")
