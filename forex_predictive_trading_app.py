@@ -60,7 +60,6 @@ def fetch_fx(pair, timeframe):
         "5m": "5min",
         "15m": "15min",
         "1h": "60min",
-        "1d": "1440min",
     }
     interval = tf_map[timeframe]
 
